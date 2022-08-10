@@ -1,0 +1,222 @@
+# 설치해야는 프로그램 
+sudo yum install net-tools
+sudo yum install vim -y
+sudo yum install wget -y
+sudo dnf install java-1.8.0-openjdk ant -y
+
+# RedHat 보안 설정 끄기 
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=disabled/' /etc/selinux/config
+
+# 하둡 사용자 생성 
+sudo adduser hadoop
+sudo passwd hadoop
+
+sudo visudo
+# hadoop 계정 sudo 권한 주기 
+
+# 100 라인에서 아래 추가 
+# vi에서 명령어 모드에서 set number
+hadoop  ALL=(ALL)       ALL
+
+
+
+# vim에서 default로 set number 적용하고 싶다!! 
+cd ~ && vim .vimrc
+set number 
+# 저장하고 나오시면.... 
+
+
+
+# hadoop으로 계정 변경 
+su hadoop
+
+# hadoop 키 설정 
+ssh-keygen -t rsa
+
+# ssh 폴더로 이동 
+cd ~/.ssh
+cat id_rsa.pub >> authorized_keys
+#권한 설정 
+rw- r-- ---
+chmod 640 authorized_keys
+
+# 현재 접속하고 있는 세션 
+w 
+
+# 내 컴퓨터로 다시 접속하기 
+ssh localhost
+
+# hadoop 환경파일 수정 
+vim ~/.bashrc
+# 추가 
+export JAVA_HOME="/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.332.b09-2.el8_6.x86_64"
+
+# 반영 
+source ~/.bashrc
+
+echo $JAVA_HOME
+cd $JAVA_HOME
+
+# hadoop 홈으로 이동 
+cd ~
+# 하둡 다운로드 
+wget https://archive.apache.org/dist/hadoop/core/hadoop-3.2.1/hadoop-3.2.1.tar.gz
+# 압축 풀기
+tar xvzf hadoop-3.2.1.tar.gz
+# 폴더명 변경 
+# hadoop-3.2.1 -> hadoop
+mv hadoop-3.2.1 hadoop
+
+
+# ssh pem 파일 만들기 
+cd ~/.ssh
+cat id_rsa
+
+# 메모장 열어서 복사했던 내용 붙여넣기 
+# 파일을 hadoop.pem으로 저장 
+# puttygen 실행 
+# hadoop.pem 파일 Load
+# Save Private Key 버튼 클릭해서 ppk로 파일로 저장
+
+# filezilla 실행한 후에 
+
+# /home/hadoop/hadoop/etc/hadoop 이동 
+# 여기에 공유폴더에 있는 파일을 복사 
+
+
+
+
+
+# 인스턴스 중지 후 이미지로 만들기
+# 이미지로 인스턴스 3개 만들기
+
+
+
+
+# log 파일 년월일시간으로 저장하기
+&Y_&M_&D_&T.log
+
+
+
+
+# hosts 설정 추가 
+# hosts는 dns서버보다 먼저 확인하는... 
+sudo vim /etc/hosts
+# 기록했던 ip 리스트를 화면의 아래 
+172.31.30.34	client
+172.31.30.124	namenode
+172.31.30.25	secondnode
+172.31.30.124	datanode1
+172.31.30.25	datanode2
+172.31.30.251	datanode3
+
+# 다 적은뒤에는 저장!!!
+# vim(vi) 명령어 모드에서 wq 
+
+# 호스트 이름 변경 
+sudo hostnamectl set-hostname client
+
+# hadoop 계정으로..
+su hadoop
+
+# 다른 컴퓨터가 살아 있는지 확인하기 
+ping -c 3 namenode
+ping -c 3 secondnode
+ping -c 3 datanode3
+
+# 다른 컴퓨터의 접속 
+ssh namenode
+# namenode 접속뒤에 
+sudo hostnamectl set-hostname namenode
+
+# 나머지 2대 컴퓨터의 hostname을 변경 
+# secondenode
+# datanode3
+
+
+# hosts 파일 나머지 3대의 컴퓨터에 전달 
+# client에서 실행 
+scp /etc/hosts namenode:/home/hadoop/hosts
+scp /etc/hosts secondnode:/home/hadoop/hosts
+scp /etc/hosts datanode3:/home/hadoop/hosts
+
+# 각각의 컴퓨터에 접속 
+# namenode에서...
+sudo cp hosts /etc/hosts
+cat /etc/hosts
+ssh secondnode
+# secondnode 컴퓨터 이동하게 될것!! 
+sudo cp hosts /etc/hosts
+cat /etc/hosts
+ssh datanode3
+# datanode3로 이동!!!
+sudo cp hosts /etc/hosts
+cat /etc/hosts
+ssh client
+# client 
+
+
+# bashrc 설정 
+vim ~/.bashrc
+export HADOOP_HOME=/home/hadoop/hadoop
+export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+export HADOOP_INSTALL=$HADOOP_HOME
+export HADOOP_MAPRED_HOME=$HADOOP_HOME
+export HADOOP_COMMON_HOME=$HADOOP_HOME
+export HADOOP_HDFS_HOME=$HADOOP_HOME
+export HADOOP_YARN_HOME=$HADOOP_HOME
+export HADOOP_COMMON_LIB_NATIVE_DIR=$HADOOP_HOME/lib/native
+export HADOOP_OPTS="-Djava.library.path=$HADOOP_HOME/lib/native"
+export PATH=$PATH:$HADOOP_HOME/sbin:$HADOOP_HOME/bin:$HIVE_HOME/bin
+
+# 저장하고 나온뒤에 
+source ~/.bashrc
+echo $HADOOP_HOME
+
+
+# 설정한 bashrc 파일을 3대의 컴퓨터한테 전송 
+scp ~/.bashrc namenode:/home/hadoop/.bashrc
+scp ~/.bashrc secondnode:/home/hadoop/.bashrc
+scp ~/.bashrc datanode3:/home/hadoop/.bashrc
+
+# bashrc는 세션을 접속할때 default로 실행 
+
+# 원격으로 명령어 전송 
+ssh namenode mkdir /home/hadoop/data
+ssh secondnode mkdir /home/hadoop/data
+ssh datanode3 mkdir /home/hadoop/data
+
+# namenode 포맷 
+hadoop namenode -format
+
+# client
+start-dfs.sh
+start-yarn.sh
+
+# namenode이동
+# jps -> java process 확인할 때 사용하는 명령어
+jps
+2466 NodeManager
+2585 Jps
+2346 DataNode
+
+# secondnode 이동 
+jps
+2002 DataNode
+2308 Jps
+2087 SecondaryNameNode
+2189 NodeManager
+
+start-yarn.sh
+jps
+2002 DataNode
+2087 SecondaryNameNode
+2423 ResourceManager
+2189 NodeManager
+2781 Jps
+
+stop-yarn.sh
+
+# namenode 돌아와서 
+stop-dfs.sh
+

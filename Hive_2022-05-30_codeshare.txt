@@ -1,0 +1,112 @@
+# client에 hive 다운로드 
+cd ~
+wget https://downloads.apache.org/hive/hive-3.1.2/apache-hive-3.1.2-bin.tar.gz
+
+
+# hive 파일 압축 풀기
+tar xvzf ./apache-hive-3.1.2-bin.tar.gz
+
+# apache-hive-3.1.2-bin -> hive 
+mv apache-hive-3.1.2-bin ./hive
+
+########################################################################
+# namenode로 이동
+ssh namenode
+
+
+# mysql 설치 
+sudo yum install mariadb-server -y
+
+# mariadb를 시작 프로그램 등록 하고 바로 실행 
+sudo systemctl enable --now mariadb
+sudo systemctl status mariadb
+
+# mariadb 설정
+mysql_secure_installation
+
+# root 패스워드 설정하기  -> Y
+ # 비밀번호 설정하세요 (123)
+# 익명의 사용자 삭제 -> Y
+# Disallow root login remotely? -> N
+# Remove test database and access to it?  -> Y
+# Reload privilege tables now? [Y/n] Y
+
+# mysql 접속하기 
+mysql -u root -p
+# 패스워드 입력
+
+# hive를 위한 db를 생성
+create database hivedb;
+# hiveuser 계정 생성 
+create user hiveuser@localhost identified by 'hivepw';
+
+# 접속 권한 부여 
+grant all privileges on hivedb.* to hiveuser@localhost;
+grant all privileges on hivedb.* to hiveuser@'client' identified by 'hivepw';
+
+
+flush privileges;
+
+##################################################################
+# client로.... 
+
+vim ~/.bashrc
+export HIVE_HOME=/home/hadoop/hive
+
+source ~/.bashrc
+echo $HIVE_HOME
+
+
+# 다운로드 받은 2개의 SH XML 파일을 
+# /home/hadoop/hive/conf 경로로 filezillar 업로드 
+
+cd ~/hive/lib
+
+cd $HIVE_HOME/lib
+rm guava-19.0.jar
+
+# 공유폴더에서 다운로드 받은 jar파일 /lib 폴더에 업로드 
+# guava와 mysql jar 업로드 
+# /home/hadoop/hive/lib
+
+
+
+
+# hdfs 작업 
+hdfs dfs -mkdir -p /user/hive/warehouse
+hdfs dfs -chmod g+w /user/hive/warehouse
+hdfs dfs -mkdir /tmp
+hdfs dfs -chmod g+w /tmp
+
+#### client 
+source ~/.bashrc 
+schematool -initSchema -dbType mysql
+
+### Initialization script completed
+### schemaTool completed
+
+# namenode로 이동 
+mysql -u root -p
+use hivedb;
+show tables;
+
+# client 복귀 
+hive
+
+
+# hive table 생성 
+CREATE TABLE FILES (line STRING);
+
+LOAD DATA INPATH '/naver/*' OVERWRITE INTO TABLE FILES;
+
+SELECT * FROM FILES LIMIT 5;
+
+
+CREATE TABLE word_counts AS 
+SELECT word, count(1) AS count FROM
+(SELECT explode(split(line, ' ')) AS word FROM FILES) w
+GROUP BY word 
+ORDER BY word;
+
+SELECT * FROM word_count ORDER BY count;
+

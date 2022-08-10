@@ -1,0 +1,190 @@
+# 필요한 라이브러리 import
+from bs4 import BeautifulSoup
+from datetime import date,datetime, timedelta
+import re, os, requests
+import pandas as pd
+
+
+# 브라우저 사용해서 접속하는 것처럼 하기 위해서 headers 입력 
+head = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36 Edg/86.0.622.38'}
+
+
+url = "https://n.news.naver.com/mnews/article/119/0002608171?sid=101"
+
+r = requests.get(url, headers=head)
+
+bs = BeautifulSoup(r.text, 'lxml')
+
+bs.find("div", id="newsct_article").text.strip()
+
+# 정규식
+# [가-힣]  -> 모든 한글 2~4 그리고 공백(0개이상 0 ~ ) 기자 
+reporter = re.compile("[가-힣]{2,4}\s*기자")
+text = bs.find("div", id="newsct_article").text.strip()
+re.sub(reporter, "", text)
+
+# 정규식 테스트
+re.sub(reporter, "", "손흥민       기자")
+
+# 이메일 정규식 
+email   = re.compile("[\w._%+-]+@[\w.-]+\.[a-zA-Z]{2,4}")
+re.findall(email, "하하하 afas@gmail.com 입니다.")
+
+
+# 기자 이름과 이메일 정규식으로 삭제 
+re.sub(reporter, "", re.sub(email, "", "오상헌 기자 (bborirang@mt.co.kr)"))
+
+######################################
+reporter = re.compile("[가-힣]{2,4}\s*기자")
+email   = re.compile("[\w._%+-]+@[\w.-]+\.[a-zA-Z]{2,4}")
+reporter2 = re.compile("[가-힣]{2,4}\s*특파원")
+
+text = bs.find("div", id="newsct_article").text.strip()
+
+text = re.sub(email, "", text)
+text = re.sub(reporter, "", text)    
+text = re.sub(reporter2, "", text) 
+######################################
+
+
+def article(date_, url):
+    reporter = re.compile("[가-힣]{2,4}\s*기자")
+    email   = re.compile("[\w._%+-]+@[\w.-]+\.[a-zA-Z]{2,4}")
+    r = requests.get(url, headers= head)
+    bs = BeautifulSoup(r.text)
+    try:
+        rt = bs.find("div", id="newsct_article")
+        text = rt.text.strip()
+    except:
+        return  
+    
+    try:
+        text = text[:text.find(rt.select_one("a").text)]
+    except:
+        pass    
+    text = re.sub(email, "", text)
+    text = re.sub(reporter, "", text)    
+    if not os.path.isdir(date_):
+        os.mkdir(date_)
+    f = open("./" + date_ + "/" + url.split("?")[0].split("/")[-1] + ".txt", "w", encoding='utf-8')
+    f.write(text)
+    f.close()
+    
+    
+def naver_news(start_date = None, end_date = None):
+    sid2_cate = [259, 258, 261, 771, 260, 310, 263]
+    url = "https://news.naver.com/main/list.nhn?mode=LS2D&mid=shm&sid2={}&sid1=101&date={}&page={}"
+    head = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36 Edg/86.0.622.38'}
+    for date_ in [str(x).replace("-", "")[:8] for x in pd.date_range(start_date, end_date)]:
+        for cate in sid2_cate:
+            r= requests.get(url.format(cate, date_, 200 ), headers= head)
+            bs = BeautifulSoup(r.text, "lxml")
+            #print(x , end=' : ')
+            last_page = bs.find("div", class_='paging').find("strong").text
+            #print ("last page:{}".format(last_page)
+            for page_num in range(1, int(last_page)+1):
+                r2= requests.get(url.format(cate, date_, page_num ), headers= head)
+                bs2 = BeautifulSoup(r2.text, 'lxml')
+                for x in bs2.find("div", class_="list_body newsflash_body").findAll("dt"):
+                    article(date_, x.a['href'])
+
+naver_news('2022-05-23', '2022-05-30')
+#  20220523, 20220524.... 20220530
+                    
+##################
+# 인스턴스 4개 실행 
+# client에 뉴스 기사 zip 파일 업로드 
+# zip 파일 압축을 해제 
+
+
+# filezila에서
+# hadoop에 naver 폴더 만들기
+# /home/hadoop/naver
+# naver 폴더에 '20220523.zip' 넣기
+
+
+# client에서 unzip  설치 
+sudo yum install unzip -y
+
+su hadoop
+cd ~/naver
+unzip 20220523.zip
+
+
+cd ~
+vim start.sh
+# 아래 내용을 입력 
+ssh namenode start-dfs.sh
+ssh secondnode start-yarn.sh
+ssh namenode mr-jobhistory-daemon.sh start historyserver
+
+# 저장하고 나온 뒤 
+. start.sh
+
+
+# 프로세스 확인 
+vim check.sh 
+
+
+echo "=========namenode==============="
+ssh namenode jps
+echo "=========secondnode==================="
+ssh secondnode jps
+echo "=========datanode3==================="
+ssh datanode3 jps
+
+# 저장 하고 나온 뒤에 
+. check.sh
+
+
+
+# hdfs에 naver 폴더 만들기 
+hdfs dfs -mkdir /naver
+
+# 확인 
+hdfs dfs -ls /
+
+# 데이터 넣기 
+cd ~/naver
+hdfs dfs -put *.txt /naver
+
+
+hadoop jar $HADOOP_HOME/share/hadoop/mapreduce/hadoop-mapreduce-examples-3.2.1.jar grep /naver /naver_out3 '[가-힣]+'
+
+
+# 하둡 구동 정지 
+vim stop.sh
+
+ssh secondnode stop-yarn.sh
+ssh namenode mr-jobhistory-daemon.sh stop historyserver
+ssh namenode stop-dfs.sh
+
+# 저장하고 나온뒤 
+. stop.sh
+
+
+# 다시 재가동 
+. start.sh
+
+
+
+# mr 브라우저 확인하기 
+# secondnode public ip
+# 접속이 안되면.... 내 보안그룹에서 8088 port가 개방되어 있는지 확인 
+http://15.164.221.186:8088/cluster
+
+
+# 인스턴스 교체 하신분들은... 
+# client 다시 접속 (hadoop 계정으로)
+su hadoop 
+cd ~ 
+. start.sh 
+
+hadoop jar $HADOOP_HOME/share/hadoop/mapreduce/hadoop-mapreduce-examples-3.2.1.jar grep /naver /naver_out3 '[가-힣]+'
+
+hdfs dfs -cat /naver_out3/part-r-00000
+
+
+# aws의 vCPU 제한 풀기 
+https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-on-demand-instances.html#vcpu-limits-request-increase
+
